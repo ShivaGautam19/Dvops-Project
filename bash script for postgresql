@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Variables
+PG_HOST="localhost"       # PostgreSQL host
+PG_PORT="5432"            # PostgreSQL port
+PG_USER="postgres"        # PostgreSQL user
+PG_PASSWORD="your_password" # PostgreSQL password
+BACKUP_DIR="/path/to/backup" # Local directory to store backups
+S3_BUCKET="your-s3-bucket-name" # S3 bucket name
+DATE=$(date +"%2024%12%31")
+
+# Export password for non-interactive use
+export PGPASSWORD=$PG_PASSWORD
+
+# Ensure the backup directory exists
+mkdir -p "$BACKUP_DIR"
+
+# Get the list of all databases
+databases=$(psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d postgres -t -c "SELECT datname FROM pg_database WHERE datistemplate = false;")
+
+# Loop through each database
+for db in $databases; do
+    echo "Processing database: $db"
+    
+    # Set paths
+    BACKUP_FILE="$BACKUP_DIR/${db}_${DATE}.sql.gz"
+    
+    # Dump and compress the database
+    pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d "$db" | gzip > "$BACKUP_FILE"
+    
+    if [ $? -eq 0 ]; then
+        echo "Backup successful for database: $db. File: $BACKUP_FILE"
+    else
+        echo "Error backing up database: $db"
+        continue
+    fi
+
+    # Upload to S3
+    aws s3 cp "$BACKUP_FILE" "s3://$S3_BUCKET/$db/${db}_${DATE}.sql.gz"
+    
+    if [ $? -eq 0 ]; then
+        echo "Successfully uploaded $BACKUP_FILE to S3 bucket $S3_BUCKET"
+    else
+        echo "Error uploading $BACKUP_FILE to S3 bucket $S3_BUCKET"
+    fi
+done
+
+# Clean up password
+unset PGPASSWORD
+
+echo "Backup process completed."
