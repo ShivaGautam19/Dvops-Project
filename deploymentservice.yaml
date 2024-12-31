@@ -14,6 +14,23 @@ spec:
     spec:
       containers:
       - name: python-flask-app
-        image: devops.project:latest  
+        image: devops-project:latest  
         ports:
         - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-flask-service
+spec:
+  selector:
+    app: python-flask-app
+  ports:
+    - protocol: TCP
+      port: 80        
+      targetPort: 8080 
+  type: Nodeport
+
+
+
